@@ -3,6 +3,9 @@
 //! This crate owns the wire representation used by Muninn clients and servers.
 //! It intentionally keeps frame payloads flexible (`serde_json::Value`) while
 //! encoding over protobuf for compact binary transport.
+//!
+//! All time values are in milliseconds. `created_ms` is an absolute Unix epoch
+//! timestamp; `expires_in` is a relative duration from `created_ms`.
 
 use prost::Message;
 use serde::{Deserialize, Serialize};
@@ -73,7 +76,10 @@ pub struct Frame {
     /// ID of the request frame this is responding to, if any.
     pub parent_id: Option<String>,
     /// Milliseconds since the Unix epoch when the frame was created.
-    pub ts: i64,
+    pub created_ms: i64,
+    /// Milliseconds from `created_ms` after which this frame should be considered expired.
+    /// Zero means no expiration.
+    pub expires_in: i64,
     /// Sender identifier (user ID or system label).
     pub from: Option<String>,
     /// Namespaced operation name, e.g. `"object:create"`.
@@ -118,7 +124,8 @@ fn frame_to_wire(frame: &Frame) -> WireFrame {
     WireFrame {
         id: frame.id.clone(),
         parent_id: frame.parent_id.clone(),
-        ts: frame.ts,
+        created_ms: frame.created_ms,
+        expires_in: frame.expires_in,
         from: frame.from.clone(),
         syscall: frame.syscall.clone(),
         status: frame.status.as_i32(),
@@ -131,7 +138,8 @@ fn wire_to_frame(wire: WireFrame) -> Result<Frame, CodecError> {
     Ok(Frame {
         id: wire.id,
         parent_id: wire.parent_id,
-        ts: wire.ts,
+        created_ms: wire.created_ms,
+        expires_in: wire.expires_in,
         from: wire.from,
         syscall: wire.syscall,
         status: Status::from_i32(wire.status)?,
@@ -195,7 +203,7 @@ struct WireFrame {
     #[prost(string, optional, tag = "2")]
     parent_id: Option<String>,
     #[prost(int64, tag = "3")]
-    ts: i64,
+    created_ms: i64,
     #[prost(string, optional, tag = "4")]
     from: Option<String>,
     #[prost(string, tag = "5")]
@@ -206,6 +214,8 @@ struct WireFrame {
     trace: Option<prost_types::Value>,
     #[prost(message, optional, tag = "8")]
     data: Option<prost_types::Value>,
+    #[prost(int64, tag = "9")]
+    expires_in: i64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, prost::Enumeration)]

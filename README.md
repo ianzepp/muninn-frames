@@ -53,7 +53,8 @@ pub enum CodecError { Decode(prost::DecodeError), InvalidStatus(i32) }
 pub struct Frame {
     pub id: String,                    // Unique identifier (typically a UUID string)
     pub parent_id: Option<String>,     // Links responses to their originating request
-    pub ts: i64,                       // Milliseconds since Unix epoch
+    pub created_ms: i64,               // Milliseconds since the Unix epoch when the frame was created
+    pub expires_in: i64,               // Milliseconds from created_ms until expiry; 0 = no expiration
     pub from: Option<String>,          // Sender identifier (user ID, system label, etc.)
     pub syscall: String,               // Namespaced operation, e.g. "object:create"
     pub status: Status,                // Lifecycle position (see below)
@@ -106,7 +107,8 @@ use serde_json::json;
 let frame = Frame {
     id: "550e8400-e29b-41d4-a716-446655440000".to_owned(),
     parent_id: None,
-    ts: 1709913600000,
+    created_ms: 1709913600000,
+    expires_in: 0,
     from: Some("user-42".to_owned()),
     syscall: "object:create".to_owned(),
     status: Status::Request,
@@ -169,7 +171,8 @@ let request = decode_frame(&incoming_bytes)?;
 let item = Frame {
     id: uuid::Uuid::new_v4().to_string(),
     parent_id: Some(request.id.clone()),
-    ts: now_millis(),
+    created_ms: now_millis(),
+    expires_in: 0,
     from: Some("server".to_owned()),
     syscall: request.syscall.clone(),
     status: Status::Item,
@@ -181,7 +184,8 @@ let item = Frame {
 let done = Frame {
     id: uuid::Uuid::new_v4().to_string(),
     parent_id: Some(request.id.clone()),
-    ts: now_millis(),
+    created_ms: now_millis(),
+    expires_in: 0,
     from: Some("server".to_owned()),
     syscall: request.syscall.clone(),
     status: Status::Done,
@@ -211,7 +215,7 @@ fn kernel_frame_from_wire(wire: frames::Frame) -> kernel::Frame {
     kernel::Frame {
         id: uuid::Uuid::parse_str(&wire.id).unwrap_or_else(|_| Uuid::new_v4()),
         parent_id: wire.parent_id.and_then(|s| Uuid::parse_str(&s).ok()),
-        ts: wire.ts,
+        created_ms: wire.created_ms,
         from: wire.from,
         syscall: wire.syscall,
         status: map_status(wire.status),
@@ -227,6 +231,7 @@ fn kernel_frame_from_wire(wire: frames::Frame) -> kernel::Frame {
 
 ## Notes
 
+- **All time values are milliseconds.** `created_ms` is an absolute Unix epoch timestamp. `expires_in` is a relative duration from `created_ms`. A value of `0` for `expires_in` means no expiration.
 - **Integer precision:** Protobuf encodes all numbers as `f64`. Integer JSON values round-trip as whole-number floats (`2` becomes `2.0`). Consumers should accept whole-number floats wherever integers are expected.
 - **No schema enforcement:** The `data` field accepts any JSON value. Validation belongs in the handler layer, not here.
 - **Non-object payloads:** The `data` field is a `serde_json::Value`, so it can hold any JSON (string, number, array, object, null). When bridging into `muninn-kernel`, non-object payloads require explicit conversion since the kernel expects `HashMap<String, Value>`.

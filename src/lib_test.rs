@@ -4,7 +4,8 @@ fn sample_frame() -> Frame {
     Frame {
         id: "id-1".to_owned(),
         parent_id: Some("parent-1".to_owned()),
-        ts: 42,
+        created_ms: 42,
+        expires_in: 0,
         from: Some("user-1".to_owned()),
         syscall: "object:update".to_owned(),
         status: Status::Done,
@@ -71,7 +72,8 @@ fn decode_frame_rejects_invalid_wire_status() {
     let wire = WireFrame {
         id: "id-1".to_owned(),
         parent_id: None,
-        ts: 1,
+        created_ms: 1,
+        expires_in: 0,
         from: None,
         syscall: "board:list".to_owned(),
         status: 77,
@@ -90,7 +92,8 @@ fn decode_frame_defaults_missing_data_to_empty_object() {
     let wire = WireFrame {
         id: "id-1".to_owned(),
         parent_id: None,
-        ts: 1,
+        created_ms: 1,
+        expires_in: 0,
         from: None,
         syscall: "board:list".to_owned(),
         status: Status::Request.as_i32(),
@@ -109,7 +112,8 @@ fn decode_frame_converts_nan_number_to_json_null() {
     let wire = WireFrame {
         id: "id-1".to_owned(),
         parent_id: None,
-        ts: 1,
+        created_ms: 1,
+        expires_in: 0,
         from: None,
         syscall: "board:list".to_owned(),
         status: Status::Request.as_i32(),
@@ -130,7 +134,8 @@ fn wire_conversion_preserves_empty_optional_fields() {
     let frame = Frame {
         id: String::new(),
         parent_id: None,
-        ts: 0,
+        created_ms: 0,
+        expires_in: 0,
         from: None,
         syscall: String::new(),
         status: Status::Request,
@@ -148,7 +153,8 @@ fn nested_payload_round_trips() {
     let frame = Frame {
         id: "id-nested".to_owned(),
         parent_id: Some("p".to_owned()),
-        ts: -99,
+        created_ms: -99,
+        expires_in: 0,
         from: Some("u".to_owned()),
         syscall: "chat:history".to_owned(),
         status: Status::Done,
@@ -172,7 +178,8 @@ fn integer_json_numbers_are_normalized_to_float_numbers() {
     let frame = Frame {
         id: "id-int".to_owned(),
         parent_id: None,
-        ts: 1,
+        created_ms: 1,
+        expires_in: 0,
         from: None,
         syscall: "board:list".to_owned(),
         status: Status::Request,
@@ -264,7 +271,8 @@ fn encode_decode_preserves_all_optional_string_fields() {
     let frame = Frame {
         id: "test-id".to_owned(),
         parent_id: Some("parent-id".to_owned()),
-        ts: 12345,
+        created_ms: 12345,
+        expires_in: 0,
         from: Some("user-id".to_owned()),
         syscall: "object:create".to_owned(),
         status: Status::Request,
@@ -275,7 +283,7 @@ fn encode_decode_preserves_all_optional_string_fields() {
     assert_eq!(decoded.id, "test-id");
     assert_eq!(decoded.parent_id.as_deref(), Some("parent-id"));
     assert_eq!(decoded.from.as_deref(), Some("user-id"));
-    assert_eq!(decoded.ts, 12345);
+    assert_eq!(decoded.created_ms, 12345);
     assert_eq!(decoded.syscall, "object:create");
     assert_eq!(decoded.status, Status::Request);
 }
@@ -285,7 +293,8 @@ fn encode_decode_negative_timestamp() {
     let frame = Frame {
         id: "neg-ts".to_owned(),
         parent_id: None,
-        ts: -999_999,
+        created_ms: -999_999,
+        expires_in: 0,
         from: None,
         syscall: "board:join".to_owned(),
         status: Status::Done,
@@ -293,7 +302,7 @@ fn encode_decode_negative_timestamp() {
         data: serde_json::json!({}),
     };
     let decoded = decode_frame(&encode_frame(&frame)).expect("decode");
-    assert_eq!(decoded.ts, -999_999);
+    assert_eq!(decoded.created_ms, -999_999);
 }
 
 #[test]
@@ -308,7 +317,8 @@ fn encode_decode_all_status_variants() {
         let frame = Frame {
             id: "status-test".to_owned(),
             parent_id: None,
-            ts: 1,
+            created_ms: 1,
+            expires_in: 0,
             from: None,
             syscall: "board:join".to_owned(),
             status,
@@ -325,7 +335,8 @@ fn encode_decode_bool_in_data() {
     let frame = Frame {
         id: "bool-test".to_owned(),
         parent_id: None,
-        ts: 1,
+        created_ms: 1,
+        expires_in: 0,
         from: None,
         syscall: "board:join".to_owned(),
         status: Status::Done,
@@ -342,7 +353,8 @@ fn encode_decode_null_in_data() {
     let frame = Frame {
         id: "null-test".to_owned(),
         parent_id: None,
-        ts: 1,
+        created_ms: 1,
+        expires_in: 0,
         from: None,
         syscall: "board:join".to_owned(),
         status: Status::Done,
@@ -358,7 +370,8 @@ fn encode_decode_array_in_data() {
     let frame = Frame {
         id: "arr-test".to_owned(),
         parent_id: None,
-        ts: 1,
+        created_ms: 1,
+        expires_in: 0,
         from: None,
         syscall: "board:join".to_owned(),
         status: Status::Done,
@@ -383,4 +396,39 @@ fn frame_serde_roundtrip_via_json() {
     let json = serde_json::to_string(&frame).expect("serialize");
     let restored: Frame = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(restored, frame);
+}
+
+#[test]
+fn encode_decode_expires_in_round_trips() {
+    let frame = Frame {
+        id: "exp-test".to_owned(),
+        parent_id: None,
+        created_ms: 1_700_000_000_000,
+        expires_in: 30_000,
+        from: None,
+        syscall: "session:ping".to_owned(),
+        status: Status::Request,
+        trace: None,
+        data: serde_json::json!({}),
+    };
+    let decoded = decode_frame(&encode_frame(&frame)).expect("decode");
+    assert_eq!(decoded.created_ms, 1_700_000_000_000);
+    assert_eq!(decoded.expires_in, 30_000);
+}
+
+#[test]
+fn expires_in_zero_means_no_expiration() {
+    let frame = Frame {
+        id: "no-exp".to_owned(),
+        parent_id: None,
+        created_ms: 1_000,
+        expires_in: 0,
+        from: None,
+        syscall: "board:list".to_owned(),
+        status: Status::Request,
+        trace: None,
+        data: serde_json::json!({}),
+    };
+    let decoded = decode_frame(&encode_frame(&frame)).expect("decode");
+    assert_eq!(decoded.expires_in, 0);
 }
