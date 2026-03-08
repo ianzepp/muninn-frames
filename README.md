@@ -56,7 +56,7 @@ pub struct Frame {
     pub created_ms: i64,               // Milliseconds since the Unix epoch when the frame was created
     pub expires_in: i64,               // Milliseconds from created_ms until expiry; 0 = no expiration
     pub from: Option<String>,          // Sender identifier (user ID, system label, etc.)
-    pub syscall: String,               // Namespaced operation, e.g. "object:create"
+    pub call: String,               // Namespaced operation, e.g. "object:create"
     pub status: Status,                // Lifecycle position (see below)
     pub trace: Option<serde_json::Value>,  // Optional observability metadata
     pub data: serde_json::Value,       // Arbitrary JSON payload
@@ -94,7 +94,7 @@ Frames are encoded as binary protobuf using [Prost](https://docs.rs/prost). The 
 - `CodecError::Decode` — the bytes are not valid protobuf
 - `CodecError::InvalidStatus` — the status integer is outside the valid range (0–5)
 
-No validation is performed on business fields (ids, syscalls, etc.) — that is the caller's responsibility.
+No validation is performed on business fields (ids, calls, etc.) — that is the caller's responsibility.
 
 ## Usage
 
@@ -110,7 +110,7 @@ let frame = Frame {
     created_ms: 1709913600000,
     expires_in: 0,
     from: Some("user-42".to_owned()),
-    syscall: "object:create".to_owned(),
+    call: "object:create".to_owned(),
     status: Status::Request,
     trace: None,
     data: json!({
@@ -174,7 +174,7 @@ let item = Frame {
     created_ms: now_millis(),
     expires_in: 0,
     from: Some("server".to_owned()),
-    syscall: request.syscall.clone(),
+    call: request.call.clone(),
     status: Status::Item,
     trace: request.trace.clone(),
     data: json!({ "row": 1, "value": "foo" }),
@@ -187,7 +187,7 @@ let done = Frame {
     created_ms: now_millis(),
     expires_in: 0,
     from: Some("server".to_owned()),
-    syscall: request.syscall.clone(),
+    call: request.call.clone(),
     status: Status::Done,
     trace: request.trace.clone(),
     data: json!({}),
@@ -217,7 +217,7 @@ fn kernel_frame_from_wire(wire: frames::Frame) -> kernel::Frame {
         parent_id: wire.parent_id.and_then(|s| Uuid::parse_str(&s).ok()),
         created_ms: wire.created_ms,
         from: wire.from,
-        syscall: wire.syscall,
+        call: wire.call,
         status: map_status(wire.status),
         trace: wire.trace.unwrap_or(serde_json::Value::Null),
         data: wire.data.as_object()

@@ -82,8 +82,8 @@ pub struct Frame {
     pub expires_in: i64,
     /// Sender identifier (user ID or system label).
     pub from: Option<String>,
-    /// Namespaced operation name, e.g. `"object:create"`.
-    pub syscall: String,
+    /// Namespaced call name used for routing, e.g. `"object:create"`.
+    pub call: String,
     /// Lifecycle position of the frame.
     pub status: Status,
     /// Optional trace metadata carried separately from business payload.
@@ -127,7 +127,7 @@ fn frame_to_wire(frame: &Frame) -> WireFrame {
         created_ms: frame.created_ms,
         expires_in: frame.expires_in,
         from: frame.from.clone(),
-        syscall: frame.syscall.clone(),
+        call: frame.call.clone(),
         status: frame.status.as_i32(),
         trace: frame.trace.as_ref().map(json_to_proto_value),
         data: Some(json_to_proto_value(&frame.data)),
@@ -141,7 +141,7 @@ fn wire_to_frame(wire: WireFrame) -> Result<Frame, CodecError> {
         created_ms: wire.created_ms,
         expires_in: wire.expires_in,
         from: wire.from,
-        syscall: wire.syscall,
+        call: wire.call,
         status: Status::from_i32(wire.status)?,
         trace: wire.trace.map(|v| proto_to_json_value(&v)),
         data: wire
@@ -207,7 +207,7 @@ struct WireFrame {
     #[prost(string, optional, tag = "4")]
     from: Option<String>,
     #[prost(string, tag = "5")]
-    syscall: String,
+    call: String,
     #[prost(enumeration = "WireFrameStatus", tag = "6")]
     status: i32,
     #[prost(message, optional, tag = "7")]
