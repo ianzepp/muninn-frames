@@ -1,6 +1,6 @@
-//! Shared frame model and protobuf codec for realtime WebSocket transport.
+//! Shared frame model and protobuf codec for realtime transport boundaries.
 //!
-//! This crate owns the wire representation used by both server and client.
+//! This crate owns the wire representation used by Muninn clients and servers.
 //! It intentionally keeps frame payloads flexible (`serde_json::Value`) while
 //! encoding over protobuf for compact binary transport.
 
