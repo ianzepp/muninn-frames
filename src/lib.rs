@@ -20,6 +20,9 @@ pub enum CodecError {
     /// The `status` integer on the wire does not map to a known [`Status`] variant.
     #[error("invalid frame status: {0}")]
     InvalidStatus(i32),
+    /// The wire payload was not a JSON object.
+    #[error("frame data must be a JSON object, got {0}")]
+    NonObjectData(&'static str),
 }
 
 /// Lifecycle status of a frame in a request/response exchange.
@@ -89,8 +92,8 @@ pub struct Frame {
     /// Optional trace metadata carried separately from business payload.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trace: Option<Value>,
-    /// Arbitrary JSON payload.
-    pub data: Value,
+    /// Object-shaped business payload.
+    pub data: Map<String, Value>,
 }
 
 /// Encode a frame into protobuf bytes.
@@ -130,7 +133,7 @@ fn frame_to_wire(frame: &Frame) -> WireFrame {
         call: frame.call.clone(),
         status: frame.status.as_i32(),
         trace: frame.trace.as_ref().map(json_to_proto_value),
-        data: Some(json_to_proto_value(&frame.data)),
+        data: Some(json_to_proto_value(&Value::Object(frame.data.clone()))),
     }
 }
 
@@ -146,7 +149,7 @@ fn wire_to_frame(wire: WireFrame) -> Result<Frame, CodecError> {
         trace: wire.trace.map(|v| proto_to_json_value(&v)),
         data: wire
             .data
-            .map_or(Value::Object(Map::new()), |v| proto_to_json_value(&v)),
+            .map_or(Ok(Map::new()), |v| proto_to_json_object(&v))?,
     })
 }
 
@@ -193,6 +196,24 @@ fn proto_to_json_value(value: &prost_types::Value) -> Value {
         prost_types::value::Kind::ListValue(v) => {
             Value::Array(v.values.iter().map(proto_to_json_value).collect())
         }
+    }
+}
+
+fn proto_to_json_object(value: &prost_types::Value) -> Result<Map<String, Value>, CodecError> {
+    match proto_to_json_value(value) {
+        Value::Object(map) => Ok(map),
+        other => Err(CodecError::NonObjectData(value_kind(&other))),
+    }
+}
+
+fn value_kind(value: &Value) -> &'static str {
+    match value {
+        Value::Null => "null",
+        Value::Bool(_) => "bool",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
     }
 }
 

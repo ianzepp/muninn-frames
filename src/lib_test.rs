@@ -1,4 +1,5 @@
 use super::*;
+use serde_json::{Map, Value};
 
 fn sample_frame() -> Frame {
     Frame {
@@ -10,13 +11,13 @@ fn sample_frame() -> Frame {
         call:"object:update".to_owned(),
         status: Status::Done,
         trace: None,
-        data: serde_json::json!({
+        data: object(serde_json::json!({
             "x": 1.25,
             "ok": true,
             "tags": ["a", "b"],
             "nested": {"k": "v"},
             "nil": null
-        }),
+        })),
     }
 }
 
@@ -104,11 +105,11 @@ fn decode_frame_defaults_missing_data_to_empty_object() {
     wire.encode(&mut bytes).expect("encode");
 
     let frame = decode_frame(&bytes).expect("decode");
-    assert_eq!(frame.data, serde_json::json!({}));
+    assert_eq!(frame.data, object(serde_json::json!({})));
 }
 
 #[test]
-fn decode_frame_converts_nan_number_to_json_null() {
+fn decode_frame_rejects_non_object_wire_data() {
     let wire = WireFrame {
         id: "id-1".to_owned(),
         parent_id: None,
@@ -119,14 +120,14 @@ fn decode_frame_converts_nan_number_to_json_null() {
         status: Status::Request.as_i32(),
         trace: None,
         data: Some(prost_types::Value {
-            kind: Some(prost_types::value::Kind::NumberValue(f64::NAN)),
+            kind: Some(prost_types::value::Kind::StringValue("nope".to_owned())),
         }),
     };
     let mut bytes = Vec::new();
     wire.encode(&mut bytes).expect("encode");
 
-    let frame = decode_frame(&bytes).expect("decode");
-    assert_eq!(frame.data, Value::Null);
+    let err = decode_frame(&bytes).expect_err("decode should reject non-object data");
+    assert!(matches!(err, CodecError::NonObjectData("string")));
 }
 
 #[test]
@@ -140,7 +141,7 @@ fn wire_conversion_preserves_empty_optional_fields() {
         call:String::new(),
         status: Status::Request,
         trace: None,
-        data: serde_json::json!({}),
+        data: object(serde_json::json!({})),
     };
 
     let bytes = encode_frame(&frame);
@@ -159,13 +160,13 @@ fn nested_payload_round_trips() {
         call:"chat:history".to_owned(),
         status: Status::Done,
         trace: None,
-        data: serde_json::json!({
+        data: object(serde_json::json!({
             "rows": [
                 {"id": 1.0, "name": "a"},
                 {"id": 2.0, "name": "b"}
             ],
             "meta": {"next": null, "count": 2.0}
-        }),
+        })),
     };
 
     let bytes = encode_frame(&frame);
@@ -184,7 +185,7 @@ fn integer_json_numbers_are_normalized_to_float_numbers() {
         call:"board:list".to_owned(),
         status: Status::Request,
         trace: None,
-        data: serde_json::json!({"count": 2}),
+        data: object(serde_json::json!({"count": 2})),
     };
 
     let decoded = decode_frame(&encode_frame(&frame)).expect("decode");
@@ -277,7 +278,7 @@ fn encode_decode_preserves_all_optional_string_fields() {
         call:"object:create".to_owned(),
         status: Status::Request,
         trace: None,
-        data: serde_json::json!({}),
+        data: object(serde_json::json!({})),
     };
     let decoded = decode_frame(&encode_frame(&frame)).expect("decode");
     assert_eq!(decoded.id, "test-id");
@@ -299,7 +300,7 @@ fn encode_decode_negative_timestamp() {
         call:"board:join".to_owned(),
         status: Status::Done,
         trace: None,
-        data: serde_json::json!({}),
+        data: object(serde_json::json!({})),
     };
     let decoded = decode_frame(&encode_frame(&frame)).expect("decode");
     assert_eq!(decoded.created_ms, -999_999);
@@ -323,7 +324,7 @@ fn encode_decode_all_status_variants() {
             call:"board:join".to_owned(),
             status,
             trace: None,
-            data: serde_json::json!({}),
+            data: object(serde_json::json!({})),
         };
         let decoded = decode_frame(&encode_frame(&frame)).expect("decode");
         assert_eq!(decoded.status, status);
@@ -341,7 +342,7 @@ fn encode_decode_bool_in_data() {
         call:"board:join".to_owned(),
         status: Status::Done,
         trace: None,
-        data: serde_json::json!({"success": true, "failed": false}),
+        data: object(serde_json::json!({"success": true, "failed": false})),
     };
     let decoded = decode_frame(&encode_frame(&frame)).expect("decode");
     assert_eq!(decoded.data["success"], serde_json::json!(true));
@@ -359,7 +360,7 @@ fn encode_decode_null_in_data() {
         call:"board:join".to_owned(),
         status: Status::Done,
         trace: None,
-        data: serde_json::json!({"value": null}),
+        data: object(serde_json::json!({"value": null})),
     };
     let decoded = decode_frame(&encode_frame(&frame)).expect("decode");
     assert_eq!(decoded.data["value"], serde_json::Value::Null);
@@ -376,7 +377,7 @@ fn encode_decode_array_in_data() {
         call:"board:join".to_owned(),
         status: Status::Done,
         trace: None,
-        data: serde_json::json!({"items": [1.0, 2.0, 3.0]}),
+        data: object(serde_json::json!({"items": [1.0, 2.0, 3.0]})),
     };
     let decoded = decode_frame(&encode_frame(&frame)).expect("decode");
     assert_eq!(decoded.data["items"].as_array().unwrap().len(), 3);
@@ -409,7 +410,7 @@ fn encode_decode_expires_in_round_trips() {
         call:"session:ping".to_owned(),
         status: Status::Request,
         trace: None,
-        data: serde_json::json!({}),
+        data: object(serde_json::json!({})),
     };
     let decoded = decode_frame(&encode_frame(&frame)).expect("decode");
     assert_eq!(decoded.created_ms, 1_700_000_000_000);
@@ -427,8 +428,15 @@ fn expires_in_zero_means_no_expiration() {
         call:"board:list".to_owned(),
         status: Status::Request,
         trace: None,
-        data: serde_json::json!({}),
+        data: object(serde_json::json!({})),
     };
     let decoded = decode_frame(&encode_frame(&frame)).expect("decode");
     assert_eq!(decoded.expires_in, 0);
+}
+
+fn object(value: Value) -> Map<String, Value> {
+    let Value::Object(map) = value else {
+        panic!("expected JSON object");
+    };
+    map
 }
